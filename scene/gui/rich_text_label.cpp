@@ -398,6 +398,7 @@ void RichTextLabel::_shape_line(ItemFrame *p_frame, int p_line, const Ref<Font> 
 
 	// Shape current paragraph.
 	String text;
+	bool new_line = false;
 	Item *it_to = (p_line + 1 < p_frame->lines.size()) ? p_frame->lines[p_line + 1].from : nullptr;
 	for (Item *it = l.from; it && it != it_to; it = _get_next_item(it)) {
 		if (visible_characters >= 0 && l.char_offset + l.char_count > visible_characters) {
@@ -428,6 +429,7 @@ void RichTextLabel::_shape_line(ItemFrame *p_frame, int p_line, const Ref<Font> 
 				l.text_buf->add_string("\n", font, font_size, Dictionary(), "");
 				text += "\n";
 				l.char_count += 1;
+				new_line = true;
 			} break;
 			case ITEM_TEXT: {
 				ItemText *t = (ItemText *)it;
@@ -443,7 +445,7 @@ void RichTextLabel::_shape_line(ItemFrame *p_frame, int p_line, const Ref<Font> 
 				String lang = _find_language(it);
 				String tx = t->text;
 				if (visible_characters >= 0 && l.char_offset + l.char_count + tx.length() > visible_characters) {
-					tx = tx.substr(0, l.char_offset + l.char_count + tx.length() - visible_characters);
+					tx = tx.substr(0, tx.length() - (l.char_offset + l.char_count + tx.length() - visible_characters));
 				}
 
 				l.text_buf->add_string(tx, font, font_size, font_ftr, lang);
@@ -611,7 +613,7 @@ void RichTextLabel::_shape_line(ItemFrame *p_frame, int p_line, const Ref<Font> 
 	//Apply BiDi override.
 	l.text_buf->set_bidi_override(structured_text_parser(_find_stt(l.from), st_args, text));
 
-	*r_char_offset = l.char_offset + l.char_count;
+	*r_char_offset = new_line ? l.char_offset + l.char_count - 1 : l.char_offset + l.char_count;
 
 	if (p_line > 0) {
 		l.offset.y = p_frame->lines[p_line - 1].offset.y + p_frame->lines[p_line - 1].text_buf->get_size().y;
@@ -4173,16 +4175,20 @@ void RichTextLabel::_bind_methods() {
 }
 
 void RichTextLabel::set_visible_characters(int p_visible) {
-	visible_characters = p_visible;
-	if (p_visible == -1) {
-		percent_visible = 1;
-	} else {
-		int total_char_count = get_total_character_count();
-		if (total_char_count > 0) {
-			percent_visible = (float)p_visible / (float)total_char_count;
+	if (visible_characters != p_visible) {
+		visible_characters = p_visible;
+		if (p_visible == -1) {
+			percent_visible = 1;
+		} else {
+			int total_char_count = get_total_character_count();
+			if (total_char_count > 0) {
+				percent_visible = (float)p_visible / (float)total_char_count;
+			}
 		}
+		main->first_invalid_line = 0; //invalidate ALL
+		_validate_line_caches(main);
+		update();
 	}
-	update();
 }
 
 int RichTextLabel::get_visible_characters() const {
